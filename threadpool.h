@@ -7,7 +7,36 @@
 #include <atomic>
 #include <vector>
 #include <queue>
-
+////using namespace std;
+////struct ListNode{
+////    std::thread action;
+////    shared_ptr<ListNode> next;
+//////    shared_ptr<ListNode> pre;
+////};
+////void PushTask()
+////{
+////    shared_ptr<ListNode> head = make_shared<ListNode>();
+////}
+////
+////void del()
+////{
+////    shared_ptr<ListNode> head;
+////    while(head)
+////    {
+////        head->action.detach();
+////        head = head->next;
+////    }
+////}
+//
+//
+//// 命名空间
+//
+//
+//
+//
+// C++ program to illustrate the
+// lvalue and rvalue
+#include <iostream>
 #include <unistd.h>
 
 using namespace std;
@@ -23,14 +52,14 @@ private:
     using Task = function<void()>;
     atomic<bool>stop;
     queue<Task>queue;
-    vector<thread> pool;
+    atomic<int> now_run_num{0};
+    int max_thread_num  =0;
+    int tolerance = 10;
 public:
-    threadpool(size_t t)
+    threadpool(size_t t):max_thread_num(t)
     {
-        for(int i=0;i<t;i++)
-        {
-            pool.emplace_back(&threadpool::schedual,this);
-        }
+        if(max_thread_num>thread::hardware_concurrency())
+            max_thread_num = thread::hardware_concurrency();
     }
 
     template<class F,class ...Args>
@@ -38,7 +67,7 @@ public:
         if(stop.load()){    // stop == true ??
             throw std::runtime_error("task executor have closed commit.");
         }
-
+        atomic<bool> add_thread{false};
         using Restype = decltype(f(args...));
         auto task = make_shared<packaged_task<Restype()>>(bind(forward<F>(f), forward<Args>(args)...));
         {
@@ -46,6 +75,14 @@ public:
             queue.template emplace([task]() {
                 (*task)();
             });
+            if(now_run_num==0||(queue.size()>tolerance))
+            {
+                add_thread.store(true);
+            }
+        }
+        if(add_thread)
+        {
+            AddThread();
         }
         cv_task.notify_all();
         future<Restype> future = task->get_future();
@@ -62,10 +99,7 @@ public:
 
 
     ~threadpool(){
-        for(int i=0;i<pool.size();i++)
-        {
-            pool[i].detach();
-        }
+
     }
 private:
     Task get_one_task()
@@ -78,11 +112,26 @@ private:
     }
     void schedual()
     {   //while(true)
-        {
             while (Task task = get_one_task()) {
                 task();
             }
-        }
     }
-
+    void AddThread()
+    {
+        now_run_num++;
+        thread new_thread([this]() {
+            while (true)
+            {
+                if (stop.load()) {
+                    break;
+                }
+                schedual();
+            }
+        }); 
+        now_run_num--;
+        new_thread.detach();
+    }
 };
+
+
+
