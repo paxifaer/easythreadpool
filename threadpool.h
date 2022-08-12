@@ -7,35 +7,6 @@
 #include <atomic>
 #include <vector>
 #include <queue>
-////using namespace std;
-////struct ListNode{
-////    std::thread action;
-////    shared_ptr<ListNode> next;
-//////    shared_ptr<ListNode> pre;
-////};
-////void PushTask()
-////{
-////    shared_ptr<ListNode> head = make_shared<ListNode>();
-////}
-////
-////void del()
-////{
-////    shared_ptr<ListNode> head;
-////    while(head)
-////    {
-////        head->action.detach();
-////        head = head->next;
-////    }
-////}
-//
-//
-//// 命名空间
-//
-//
-//
-//
-// C++ program to illustrate the
-// lvalue and rvalue
 #include <iostream>
 #include <unistd.h>
 
@@ -50,7 +21,7 @@ private:
     mutex m_task;
     condition_variable cv_task;
     using Task = function<void()>;
-    atomic<bool>stop;
+    atomic<bool>stop{false};
     queue<Task>queue;
     atomic<int> now_run_num{0};
     int max_thread_num  =0;
@@ -99,7 +70,14 @@ public:
 
 
     ~threadpool(){
-
+        {
+            // 拿锁
+            std::unique_lock<std::mutex> lock(m_task);
+            // 停止标志置true
+            stop = true;
+        }
+        // stop thread;
+        cv_task.notify_all();
     }
 private:
     Task get_one_task()
